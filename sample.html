@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MotionU — Route Control</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://unpkg.com/qr-code-styling@1.5.0/lib/qr-code-styling.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --ink:#101826;
+    --ink-soft:#182437;
+    --paper:#F1ECDD;
+    --paper-dim:#E7E0CB;
+    --route:#FF5A2E;
+    --route-dark:#DE4A22;
+    --signal:#2FD9C4;
+    --muted:#7C8494;
+    --line-dark:rgba(255,255,255,.09);
+    --line-paper:#D9D0B4;
+  }
+  *{ -webkit-font-smoothing:antialiased; }
+  body{ font-family:'IBM Plex Sans', sans-serif; background:var(--paper); color:var(--ink); }
+  .f-display{ font-family:'Space Grotesk', sans-serif; }
+  .f-mono{ font-family:'IBM Plex Mono', monospace; }
+
+  /* perforation: a strip of punched circles, like a ticket edge */
+  .perforation{
+    height:16px;
+    background-image: radial-gradient(circle at 10px 8px, var(--paper) 6px, transparent 6.5px);
+    background-size: 20px 16px;
+    background-repeat: repeat-x;
+  }
+  .perforation-dark{
+    background-image: radial-gradient(circle at 10px 8px, var(--ink) 6px, transparent 6.5px);
+  }
+
+  .dash-rule{ border-top:1.5px dashed var(--line-paper); }
+
+  @keyframes pulse-dot{
+    0%, 100%{ opacity:1; } 50%{ opacity:.25; }
+  }
+  .live-dot{ animation: pulse-dot 1.8s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce){
+    .live-dot{ animation:none; }
+  }
+
+  .station-line{ stroke-dasharray: 3 5; }
+
+  .board-btn{ transition: transform .15s ease, background-color .15s ease; }
+  .board-btn:active{ transform: scale(.97); }
+
+  ::selection{ background: var(--route); color:#fff; }
+
+  input:focus{ outline:none; }
+  .field:focus-within{ border-color: var(--route); box-shadow: 0 0 0 3px rgba(255,90,46,.12); }
+
+  #auth-modal{ backdrop-filter: blur(2px); }
+</style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- BOARD: nav + hero, styled as a departure board -->
+  <header class="bg-[var(--ink)] text-[var(--paper)]">
+    <div class="max-w-6xl mx-auto px-5 sm:px-8">
+      <div class="flex items-center justify-between h-20">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-md bg-[var(--route)] flex items-center justify-center f-display font-bold text-lg">M</div>
+          <div class="leading-none">
+            <div class="f-display font-semibold text-lg tracking-tight">MotionU</div>
+            <div class="f-mono text-[10px] tracking-[0.2em] text-[var(--muted)] uppercase mt-1">Route Control</div>
+          </div>
+        </div>
+
+        <nav class="flex items-center gap-1">
+          <button id="nav-generator" onclick="switchTab('generator')"
+            class="f-mono text-xs uppercase tracking-wider px-4 py-2 rounded-md transition-colors">
+            Routes
+          </button>
+          <button id="nav-analytics" onclick="switchTab('analytics')"
+            class="f-mono text-xs uppercase tracking-wider px-4 py-2 rounded-md transition-colors flex items-center gap-2">
+            <i id="analytics-lock-icon" class="fa-solid fa-lock text-[10px]"></i>
+            Dashboard
+          </button>
+          <div class="w-px h-6 bg-[var(--line-dark)] mx-2"></div>
+          <div id="auth-area"></div>
+        </nav>
+      </div>
+    </div>
+
+    <div class="max-w-6xl mx-auto px-5 sm:px-8 pb-10 pt-2">
+      <div class="flex items-center gap-2 mb-4">
+        <span class="w-2 h-2 rounded-full bg-[var(--signal)] live-dot"></span>
+        <span class="f-mono text-[11px] tracking-[0.2em] uppercase text-[var(--muted)]">System online</span>
+      </div>
+      <h1 class="f-display text-3xl sm:text-4xl font-semibold max-w-2xl leading-tight">
+        Turn any link into a routed, trackable, branded stop.
+      </h1>
+      <p class="text-[var(--muted)] mt-3 max-w-lg text-sm">
+        Paste a destination, name the route, and MotionU issues a short link with a scannable branded code attached.
+      </p>
+
+      <!-- signature: route line diagram -->
+      <div class="mt-8 hidden sm:block">
+        <svg viewBox="0 0 640 60" class="w-full max-w-xl h-[52px]">
+          <line x1="20" y1="30" x2="620" y2="30" stroke="var(--line-dark)" stroke-width="2" class="station-line"></line>
+          <g>
+            <circle cx="20" cy="30" r="7" fill="var(--route)"></circle>
+            <text x="20" y="52" text-anchor="middle" fill="var(--muted)" font-size="10" font-family="IBM Plex Mono, monospace" letter-spacing="1">ORIGIN</text>
+          </g>
+          <g>
+            <circle cx="320" cy="30" r="7" fill="var(--route)"></circle>
+            <text x="320" y="52" text-anchor="middle" fill="var(--muted)" font-size="10" font-family="IBM Plex Mono, monospace" letter-spacing="1">ROUTE</text>
+          </g>
+          <g>
+            <circle id="station-signal" cx="620" cy="30" r="7" fill="var(--ink-soft)" stroke="var(--muted)" stroke-width="1.5"></circle>
+            <text x="605" y="52" text-anchor="middle" fill="var(--muted)" font-size="10" font-family="IBM Plex Mono, monospace" letter-spacing="1">SIGNAL</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-grow max-w-6xl w-full mx-auto px-5 sm:px-8 py-10">
+
+    <!-- GENERATOR -->
+    <section id="section-generator" class="space-y-8">
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+        <!-- form ticket -->
+        <div class="lg:col-span-3 bg-white/70 rounded-xl border border-[var(--line-paper)] p-6 sm:p-7">
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="f-display font-semibold text-lg">Issue a new route</h2>
+            <span class="f-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">Form 01</span>
+          </div>
+
+          <form id="shortener-form" onsubmit="handleShorten(event)" class="space-y-5">
+            <div>
+              <label class="block f-mono text-[11px] uppercase tracking-wider text-[var(--muted)] mb-2">Destination URL</label>
+              <div class="field flex items-center gap-2 border border-[var(--line-paper)] rounded-lg bg-white px-3 transition-all">
+                <i class="fa-solid fa-arrow-right-long text-[var(--muted)] text-xs"></i>
+                <input type="url" id="long-url" required placeholder="https://example.com/campaign/summer"
+                  class="w-full py-3 text-sm bg-transparent placeholder-[var(--muted)]/60">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block f-mono text-[11px] uppercase tracking-wider text-[var(--muted)] mb-2">Domain</label>
+                <div class="px-3 py-3 rounded-lg bg-[var(--paper-dim)] text-sm f-mono text-[var(--muted)]">motionu.link/</div>
+              </div>
+              <div>
+                <label class="block f-mono text-[11px] uppercase tracking-wider text-[var(--muted)] mb-2">Custom alias <span class="normal-case font-normal">(optional)</span></label>
+                <div class="field border border-[var(--line-paper)] rounded-lg bg-white px-3 transition-all">
+                  <input type="text" id="custom-alias" placeholder="summer-2026" maxlength="20"
+                    class="w-full py-3 text-sm bg-transparent f-mono placeholder-[var(--muted)]/60">
+                </div>
+              </div>
+            </div>
+
+            <button type="submit"
+              class="board-btn w-full bg-[var(--ink)] hover:bg-[var(--ink-soft)] text-[var(--paper)] font-medium py-3 rounded-lg flex items-center justify-center gap-2 text-sm">
+              <i class="fa-solid fa-route"></i>
+              <span>Issue route + QR</span>
+            </button>
+          </form>
+
+          <div class="mt-6 pt-5 border-t border-[var(--line-paper)] flex items-start gap-2 text-xs text-[var(--muted)]">
+            <i class="fa-solid fa-shield-halved mt-0.5"></i>
+            <span>Every code carries a MotionU authentication mark, so scans can be told apart from copies.</span>
+          </div>
+        </div>
+
+        <!-- result: boarding-pass ticket -->
+        <div class="lg:col-span-2 rounded-xl border border-[var(--line-paper)] overflow-hidden bg-white/70 flex flex-col min-h-[380px]">
+          <div id="output-empty" class="flex-grow flex flex-col items-center justify-center text-center p-8 space-y-3">
+            <div class="w-14 h-14 rounded-full bg-[var(--paper-dim)] flex items-center justify-center text-lg text-[var(--muted)]">
+              <i class="fa-solid fa-qrcode"></i>
+            </div>
+            <h3 class="f-display font-semibold text-sm">No route issued yet</h3>
+            <p class="text-xs text-[var(--muted)] max-w-[220px]">Fill in a destination on the left — your ticket prints here.</p>
+          </div>
+
+          <div id="output-result" class="hidden flex-col flex-grow">
+            <div class="p-6 space-y-4">
+              <div class="flex items-center justify-between">
+                <span class="f-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">Ticket</span>
+                <span id="result-ticket-no" class="f-mono text-[10px] text-[var(--muted)]"></span>
+              </div>
+              <div class="flex items-center justify-between bg-[var(--paper-dim)] rounded-lg px-3 py-3">
+                <span id="result-short-url" class="f-mono text-sm font-medium text-[var(--route-dark)] truncate pr-2"></span>
+                <button onclick="copyToClipboard()" class="text-[var(--muted)] hover:text-[var(--ink)] p-1.5" title="Copy link">
+                  <i id="copy-icon" class="fa-regular fa-copy"></i>
+                </button>
+              </div>
+            </div>
+
+            <div class="perforation perforation-dark"></div>
+
+            <div class="bg-[var(--ink)] text-[var(--paper)] p-6 flex-grow flex flex-col items-center justify-center gap-4">
+              <div id="qr-canvas-container" class="bg-white p-2 rounded-lg"></div>
+              <button onclick="downloadQR()"
+                class="board-btn w-full bg-[var(--route)] hover:bg-[var(--route-dark)] text-white font-medium py-2.5 rounded-lg text-sm flex items-center justify-center gap-2">
+                <i class="fa-solid fa-download"></i>
+                <span>Download code</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ANALYTICS -->
+    <section id="section-analytics" class="hidden space-y-6">
+
+      <div id="analytics-locked" class="hidden">
+        <div class="max-w-md mx-auto text-center rounded-xl border border-[var(--line-paper)] bg-white/70 p-10">
+          <div class="w-12 h-12 rounded-full bg-[var(--paper-dim)] flex items-center justify-center mx-auto mb-4 text-[var(--muted)]">
+            <i class="fa-solid fa-lock"></i>
+          </div>
+          <h3 class="f-display font-semibold text-lg mb-2">Dashboard access required</h3>
+          <p class="text-sm text-[var(--muted)] mb-6">Log in or create a free account to see route performance and click data.</p>
+          <div class="flex items-center justify-center gap-3">
+            <button onclick="openAuth('login')" class="board-btn px-5 py-2.5 rounded-lg bg-[var(--ink)] text-[var(--paper)] text-sm font-medium">Log in</button>
+            <button onclick="openAuth('signup')" class="board-btn px-5 py-2.5 rounded-lg border border-[var(--ink)] text-sm font-medium">Sign up</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="analytics-unlocked" class="hidden space-y-6">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
+          <div class="rounded-xl border border-[var(--line-paper)] bg-white/70 overflow-hidden">
+            <div class="perforation"></div>
+            <div class="p-5">
+              <p class="f-mono text-[10px] uppercase tracking-widest text-[var(--muted)] mb-1">Routes issued</p>
+              <p id="metric-total-links" class="f-display text-3xl font-semibold">0</p>
+            </div>
+          </div>
+          <div class="rounded-xl border border-[var(--line-paper)] bg-white/70 overflow-hidden">
+            <div class="perforation"></div>
+            <div class="p-5">
+              <p class="f-mono text-[10px] uppercase tracking-widest text-[var(--muted)] mb-1">Total clicks</p>
+              <p id="metric-total-clicks" class="f-display text-3xl font-semibold">0</p>
+            </div>
+          </div>
+          <div class="rounded-xl border border-[var(--line-paper)] bg-white/70 overflow-hidden">
+            <div class="perforation"></div>
+            <div class="p-5">
+              <p class="f-mono text-[10px] uppercase tracking-widest text-[var(--muted)] mb-1">QR engagement</p>
+              <p id="metric-qr-ratio" class="f-display text-3xl font-semibold">100%</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-[var(--line-paper)] bg-white/70 overflow-hidden">
+          <div class="px-6 py-4 bg-[var(--ink)] text-[var(--paper)] flex items-center justify-between">
+            <h2 class="f-display font-semibold text-sm">Departures</h2>
+            <span class="f-mono text-[10px] uppercase tracking-widest text-[var(--signal)] flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-[var(--signal)] live-dot"></span> Live
+            </span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-left text-sm">
+              <thead class="f-mono text-[10px] uppercase tracking-wider text-[var(--muted)] border-b border-[var(--line-paper)]">
+                <tr>
+                  <th class="px-6 py-3">Route</th>
+                  <th class="px-6 py-3">Destination</th>
+                  <th class="px-6 py-3">Clicks</th>
+                  <th class="px-6 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="analytics-table-body" class="divide-y divide-[var(--line-paper)]"></tbody>
+            </table>
+            <div id="table-empty-state" class="hidden p-10 text-center text-[var(--muted)] text-sm space-y-2">
+              <i class="fa-regular fa-folder-open text-2xl block"></i>
+              <p>No routes tracked yet. Issue one from the Routes tab.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-[var(--line-paper)] py-6 text-center f-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">
+    MotionU Route Control — Internal Tool
+  </footer>
+
+  <!-- AUTH MODAL -->
+  <div id="auth-modal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div class="bg-[var(--paper)] rounded-xl w-full max-w-sm overflow-hidden border border-[var(--line-paper)]">
+      <div class="bg-[var(--ink)] text-[var(--paper)] px-6 py-4 flex items-center justify-between">
+        <span class="f-display font-semibold text-sm">Dashboard access</span>
+        <button onclick="closeAuth()" class="text-[var(--muted)] hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="flex border-b border-[var(--line-paper)]">
+        <button id="auth-tab-login" onclick="setAuthMode('login')" class="flex-1 py-3 f-mono text-xs uppercase tracking-wider"></button>
+        <button id="auth-tab-signup" onclick="setAuthMode('signup')" class="flex-1 py-3 f-mono text-xs uppercase tracking-wider"></button>
+      </div>
+
+      <form id="auth-form" onsubmit="handleAuthSubmit(event)" class="p-6 space-y-4">
+        <div>
+          <label class="block f-mono text-[11px] uppercase tracking-wider text-[var(--muted)] mb-2">Email</label>
+          <input type="email" id="auth-email" required class="field w-full border border-[var(--line-paper)] rounded-lg bg-white px-3 py-2.5 text-sm">
+        </div>
+        <div>
+          <label class="block f-mono text-[11px] uppercase tracking-wider text-[var(--muted)] mb-2">Password</label>
+          <input type="password" id="auth-password" required minlength="4" class="field w-full border border-[var(--line-paper)] rounded-lg bg-white px-3 py-2.5 text-sm">
+        </div>
+        <p id="auth-error" class="hidden text-xs text-[var(--route-dark)]"></p>
+        <button type="submit" id="auth-submit" class="board-btn w-full bg-[var(--route)] hover:bg-[var(--route-dark)] text-white font-medium py-2.5 rounded-lg text-sm"></button>
+        <p class="text-center text-[11px] text-[var(--muted)]">This is a local demo — accounts are stored in this browser only.</p>
+      </form>
+    </div>
+  </div>
+
+<script>
+  const domainPrefix = "motionu.link/";
+  let db = JSON.parse(localStorage.getItem('motionu_db')) || [];
+  let users = JSON.parse(localStorage.getItem('motionu_users')) || [];
+  let session = JSON.parse(localStorage.getItem('motionu_session')) || null;
+  let currentQrCodeInstance = null;
+  let authMode = 'login';
+  let pendingTabAfterAuth = null;
+
+  const motionuMark = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="%23101826"/><text x="50" y="68" font-size="52" font-family="Space Grotesk, sans-serif" font-weight="700" fill="white" text-anchor="middle">M</text></svg>`;
+
+  // ---------- Auth ----------
+  function renderAuthArea() {
+    const el = document.getElementById('auth-area');
+    if (session) {
+      el.innerHTML = `
+        <div class="flex items-center gap-3 pl-1">
+          <span class="f-mono text-xs text-[var(--muted)] hidden sm:inline">${session.email}</span>
+          <button onclick="logout()" class="f-mono text-xs uppercase tracking-wider px-3 py-2 rounded-md hover:bg-[var(--ink-soft)]">Log out</button>
+        </div>`;
+    } else {
+      el.innerHTML = `<button onclick="openAuth('login')" class="f-mono text-xs uppercase tracking-wider px-4 py-2 rounded-md bg-[var(--route)] hover:bg-[var(--route-dark)]">Log in</button>`;
+    }
+    document.getElementById('analytics-lock-icon').classList.toggle('hidden', !!session);
+  }
+
+  function openAuth(mode) {
+    setAuthMode(mode);
+    document.getElementById('auth-modal').classList.remove('hidden');
+  }
+  function closeAuth() {
+    document.getElementById('auth-modal').classList.add('hidden');
+    document.getElementById('auth-error').classList.add('hidden');
+    document.getElementById('auth-form').reset();
+  }
+  function setAuthMode(mode) {
+    authMode = mode;
+    const isLogin = mode === 'login';
+    document.getElementById('auth-tab-login').className = `flex-1 py-3 f-mono text-xs uppercase tracking-wider ${isLogin ? 'bg-white text-[var(--ink)]' : 'text-[var(--muted)]'}`;
+    document.getElementById('auth-tab-login').textContent = 'Log in';
+    document.getElementById('auth-tab-signup').className = `flex-1 py-3 f-mono text-xs uppercase tracking-wider ${!isLogin ? 'bg-white text-[var(--ink)]' : 'text-[var(--muted)]'}`;
+    document.getElementById('auth-tab-signup').textContent = 'Sign up';
+    document.getElementById('auth-submit').textContent = isLogin ? 'Log in' : 'Create account';
+    document.getElementById('auth-error').classList.add('hidden');
+  }
+
+  function handleAuthSubmit(event) {
+    event.preventDefault();
+    const email = document.getElementById('auth-email').value.trim().toLowerCase();
+    const password = document.getElementById('auth-password').value;
+    const errorEl = document.getElementById('auth-error');
+    errorEl.classList.add('hidden');
+
+    if (authMode === 'signup') {
+      if (users.some(u => u.email === email)) {
+        errorEl.textContent = 'An account with that email already exists.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      users.push({ email, password });
+      localStorage.setItem('motionu_users', JSON.stringify(users));
+    } else {
+      const match = users.find(u => u.email === email && u.password === password);
+      if (!match) {
+        errorEl.textContent = 'Email or password not recognized.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+    }
+
+    session = { email };
+    localStorage.setItem('motionu_session', JSON.stringify(session));
+    renderAuthArea();
+    closeAuth();
+    switchTab('analytics');
+  }
+
+  function logout() {
+    session = null;
+    localStorage.removeItem('motionu_session');
+    renderAuthArea();
+    switchTab('generator');
+  }
+
+  // ---------- Tabs ----------
+  function switchTab(target) {
+    const genBtn = document.getElementById('nav-generator');
+    const anaBtn = document.getElementById('nav-analytics');
+    const genSec = document.getElementById('section-generator');
+    const anaSec = document.getElementById('section-analytics');
+    const activeCls = "f-mono text-xs uppercase tracking-wider px-4 py-2 rounded-md bg-[var(--ink-soft)] transition-colors flex items-center gap-2";
+    const idleCls = "f-mono text-xs uppercase tracking-wider px-4 py-2 rounded-md text-[var(--muted)] hover:bg-[var(--ink-soft)] transition-colors flex items-center gap-2";
+
+    if (target === 'analytics' && !session) {
+      openAuth('login');
+      return;
+    }
+
+    if (target === 'generator') {
+      genBtn.className = activeCls.replace('flex items-center gap-2', '');
+      anaBtn.className = idleCls;
+      genSec.classList.remove('hidden');
+      anaSec.classList.add('hidden');
+    } else {
+      anaBtn.className = activeCls;
+      genBtn.className = idleCls.replace('flex items-center gap-2', '');
+      genSec.classList.add('hidden');
+      anaSec.classList.remove('hidden');
+      document.getElementById('analytics-locked').classList.toggle('hidden', !!session);
+      document.getElementById('analytics-unlocked').classList.toggle('hidden', !session);
+      if (session) renderAnalyticsTable();
+    }
+  }
+
+  // ---------- Shortener ----------
+  function handleShorten(event) {
+    event.preventDefault();
+    const longUrl = document.getElementById('long-url').value.trim();
+    let alias = document.getElementById('custom-alias').value.trim().replace(/[^a-zA-Z0-9-_]/g, '');
+    if (!alias) alias = Math.random().toString(36).substring(2, 8);
+
+    if (db.some(link => link.shortCode.toLowerCase() === alias.toLowerCase())) {
+      alert("That alias is already taken. Try another.");
+      return;
+    }
+
+    const entry = { id: Date.now(), longUrl, shortCode: alias, clicks: 0 };
+    db.unshift(entry);
+    localStorage.setItem('motionu_db', JSON.stringify(db));
+
+    renderQrCanvas(`${domainPrefix}${alias}`);
+    document.getElementById('result-short-url').innerText = `${domainPrefix}${alias}`;
+    document.getElementById('result-ticket-no').innerText = `#${entry.id.toString().slice(-6)}`;
+    document.getElementById('output-empty').classList.add('hidden');
+    document.getElementById('output-result').classList.remove('hidden');
+    document.getElementById('output-result').classList.add('flex');
+    document.getElementById('shortener-form').reset();
+
+    const signalDot = document.getElementById('station-signal');
+    signalDot.setAttribute('fill', 'var(--route)');
+    signalDot.setAttribute('stroke', 'none');
+  }
+
+  function renderQrCanvas(payload) {
+    const wrap = document.getElementById('qr-canvas-container');
+    wrap.innerHTML = "";
+    currentQrCodeInstance = new QRCodeStyling({
+      width: 200,
+      height: 200,
+      type: "svg",
+      data: payload,
+      image: motionuMark,
+      dotsOptions: { color: "#101826", type: "rounded" },
+      backgroundOptions: { color: "#ffffff" },
+      imageOptions: { crossOrigin: "anonymous", margin: 4, imageSizeFactor: 0.38 },
+      cornersSquareOptions: { color: "#FF5A2E", type: "extra-rounded" },
+      cornersDotOptions: { color: "#FF5A2E", type: "dot" }
+    });
+    currentQrCodeInstance.append(wrap);
+  }
+
+  function copyToClipboard() {
+    const text = document.getElementById('result-short-url').innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const icon = document.getElementById('copy-icon');
+      icon.className = "fa-solid fa-check";
+      setTimeout(() => { icon.className = "fa-regular fa-copy"; }, 1800);
+    });
+  }
+
+  function downloadQR() {
+    if (currentQrCodeInstance) {
+      currentQrCodeInstance.download({ name: `motionu-route-${Date.now()}`, extension: "png" });
+    }
+  }
+
+  // ---------- Analytics ----------
+  function simulateUrlClick(id, url) {
+    db = db.map(item => item.id === id ? { ...item, clicks: item.clicks + 1 } : item);
+    localStorage.setItem('motionu_db', JSON.stringify(db));
+    renderAnalyticsTable();
+    window.open(url, '_blank');
+  }
+
+  function deleteAsset(id) {
+    if (confirm("Remove this route? This deletes its tracked click history.")) {
+      db = db.filter(item => item.id !== id);
+      localStorage.setItem('motionu_db', JSON.stringify(db));
+      renderAnalyticsTable();
+    }
+  }
+
+  function renderAnalyticsTable() {
+    const tbody = document.getElementById('analytics-table-body');
+    const empty = document.getElementById('table-empty-state');
+    let totalClicks = 0;
+    tbody.innerHTML = "";
+
+    if (db.length === 0) {
+      empty.classList.remove('hidden');
+      document.getElementById('metric-total-links').innerText = "0";
+      document.getElementById('metric-total-clicks').innerText = "0";
+      return;
+    }
+    empty.classList.add('hidden');
+
+    db.forEach(entry => {
+      totalClicks += entry.clicks;
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td class="px-6 py-4 whitespace-nowrap f-mono text-[var(--route-dark)] font-medium">${domainPrefix}${entry.shortCode}</td>
+        <td class="px-6 py-4 max-w-xs truncate text-[var(--muted)]" title="${entry.longUrl}">${entry.longUrl}</td>
+        <td class="px-6 py-4 whitespace-nowrap">
+          <span class="inline-flex items-center px-2.5 py-1 rounded-md f-mono text-xs ${entry.clicks > 0 ? 'bg-[var(--signal)]/15 text-[#0F8A7B]' : 'bg-[var(--paper-dim)] text-[var(--muted)]'}">${entry.clicks}</span>
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-right space-x-2">
+          <button onclick="simulateUrlClick(${entry.id}, '${entry.longUrl}')" class="text-xs border border-[var(--line-paper)] hover:border-[var(--route)] hover:text-[var(--route-dark)] px-3 py-1.5 rounded-md">Test hit</button>
+          <button onclick="deleteAsset(${entry.id})" class="text-xs text-[var(--route-dark)] hover:bg-[var(--paper-dim)] p-1.5 rounded-md" title="Delete"><i class="fa-solid fa-trash-can"></i></button>
+        </td>`;
+      tbody.appendChild(row);
+    });
+
+    document.getElementById('metric-total-links').innerText = db.length;
+    document.getElementById('metric-total-clicks').innerText = totalClicks;
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    renderAuthArea();
+    switchTab('generator');
+  });
+</script>
+</body>
+</html>

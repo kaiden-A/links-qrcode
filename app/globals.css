@@ -1,26 +1,81 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --color-ink: #101826;
+  --color-ink-soft: #182437;
+  --color-paper: #F1ECDD;
+  --color-paper-dim: #E7E0CB;
+  --color-route: #2F5DFF;
+  --color-route-dark: #2447D1;
+  --color-signal: #2FD9C4;
+  --color-muted: #7C8494;
+  --color-line-dark: rgba(255, 255, 255, 0.09);
+  --color-line-paper: #D9D0B4;
+
+  --font-display: var(--font-display), sans-serif;
+  --font-body: var(--font-body), sans-serif;
+  --font-mono: var(--font-mono), monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ─── Perforated tear-line ─── */
+.perforation {
+  height: 16px;
+  background-image: radial-gradient(circle at 10px 8px, #F1ECDD 6px, transparent 6.5px);
+  background-size: 20px 16px;
+  background-repeat: repeat-x;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.perforation-ink {
+  background-image: radial-gradient(circle at 10px 8px, #101826 6px, transparent 6.5px);
 }
 
+/* ─── Live dot ─── */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.live-dot {
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot { animation: none; }
+}
+
+/* ─── Dashed rule ─── */
+.dash-rule {
+  border-top: 1.5px dashed var(--color-line-paper);
+}
+
+/* ─── Selection ─── */
+::selection {
+  background: var(--color-route);
+  color: #fff;
+}
+
+/* ─── Base ─── */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body), sans-serif;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-line-paper);
+  border-radius: 3px;
+}
+
+/* ─── Utility ─── */
+.station-line {
+  stroke-dasharray: 3 5;
 }
