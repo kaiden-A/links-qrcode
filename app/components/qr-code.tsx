@@ -24,7 +24,7 @@ export function QRCodeCard({ url, logo = "/icon.png" }: QRCodeCardProps) {
       image: logo,
       dotsOptions: { color: "#101826", type: "rounded" },
       backgroundOptions: { color: "#ffffff" },
-      imageOptions: { crossOrigin: "anonymous", margin: 4, imageSizeFactor: 0.38 },
+      imageOptions: { crossOrigin: "anonymous", margin: 4 },
       cornersSquareOptions: { color: "#2F5DFF", type: "extra-rounded" },
       cornersDotOptions: { color: "#2F5DFF", type: "dot" },
     });
