@@ -38,8 +38,55 @@ export function QRCodeCard({ url, logo = "/icon.png" }: QRCodeCardProps) {
     };
   }, [url, logo]);
 
-  const handleDownload = () => {
-    qrRef.current?.download({ name: `motionu-route-${Date.now()}`, extension: "png" });
+  const handleDownload = async () => {
+    const qr = qrRef.current;
+    if (!qr) return;
+
+    // Get SVG at its original vector quality
+    const svgBlob = await qr.getRawData("svg");
+    if (!svgBlob) return;
+
+    // Browser-only: getRawData returns Blob in the browser
+    if (!(svgBlob instanceof Blob)) return;
+
+    const svgUrl = URL.createObjectURL(svgBlob);
+
+    // Load the SVG into an off-screen Image
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => {
+        URL.revokeObjectURL(svgUrl);
+        reject(new Error("Failed to load QR SVG for download"));
+      };
+      img.src = svgUrl;
+    });
+
+    // Render the vector SVG onto a high-res canvas (10× = 2000×2000)
+    const scale = 10;
+    const width = 200 * scale;
+    const height = 200 * scale;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      URL.revokeObjectURL(svgUrl);
+      return;
+    }
+
+    ctx.drawImage(img, 0, 0, width, height);
+    URL.revokeObjectURL(svgUrl);
+
+    // Trigger download of the high-res PNG
+    const pngUrl = canvas.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = pngUrl;
+    a.download = `motionu-route-${Date.now()}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   return (
