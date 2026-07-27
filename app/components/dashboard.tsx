@@ -1,4 +1,7 @@
-import type { LinkRecord } from "@/lib/types";
+"use client";
+
+import { useState } from "react";
+import type { LinkRecord, LinkStats } from "@/lib/types";
 
 interface DashboardProps {
   links: LinkRecord[];
@@ -13,6 +16,34 @@ export function Dashboard({
   onDelete,
   totalClicks,
 }: DashboardProps) {
+  const [statsModal, setStatsModal] = useState<{
+    slug: string;
+    data: LinkStats | null;
+    loading: boolean;
+  } | null>(null);
+
+  const handleViewStats = async (slug: string) => {
+    setStatsModal({ slug, data: null, loading: true });
+    try {
+      const res = await fetch(`/api/links/${slug}/stats`);
+      if (res.ok) {
+        const data: LinkStats = await res.json();
+        setStatsModal({ slug, data, loading: false });
+      } else {
+        setStatsModal({ slug, data: null, loading: false });
+      }
+    } catch {
+      setStatsModal({ slug, data: null, loading: false });
+    }
+  };
+
+  const platformColors: Record<string, string> = {
+    instagram: "bg-[#E4405F]",
+    whatsapp: "bg-[#25D366]",
+    twitter: "bg-[#1DA1F2]",
+    direct: "bg-[#6B7280]",
+  };
+
   if (links.length === 0) {
     return (
       <div id="table-empty-state" className="px-6 py-16 text-center">
@@ -119,6 +150,12 @@ export function Dashboard({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right space-x-2">
                     <button
+                      onClick={() => handleViewStats(link.slug)}
+                      className="text-xs border border-line-paper hover:border-signal hover:text-[#0F8A7B] px-3 py-1.5 rounded-md transition-colors"
+                    >
+                      Stats
+                    </button>
+                    <button
                       onClick={() => onTestHit(link)}
                       className="text-xs border border-line-paper hover:border-route hover:text-route-dark px-3 py-1.5 rounded-md transition-colors"
                     >
@@ -140,6 +177,73 @@ export function Dashboard({
           </table>
         </div>
       </div>
+
+      {/* Stats modal */}
+      {statsModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+          style={{ backdropFilter: "blur(2px)" }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setStatsModal(null);
+          }}
+        >
+          <div className="w-full max-w-md rounded-xl border border-line-paper bg-white overflow-hidden">
+            <div className="bg-ink text-paper px-6 py-4 flex items-center justify-between">
+              <h3 className="font-display font-semibold text-sm">
+                Stats — /{statsModal.slug}
+              </h3>
+              <button
+                onClick={() => setStatsModal(null)}
+                className="text-muted hover:text-paper transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6">
+              {statsModal.loading ? (
+                <p className="text-sm text-muted text-center py-8 font-mono">Loading stats...</p>
+              ) : statsModal.data ? (
+                <div className="space-y-5">
+                  <div className="text-center">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted mb-1">
+                      Total clicks
+                    </p>
+                    <p className="font-display text-4xl font-semibold">
+                      {statsModal.data.total_clicks}
+                    </p>
+                  </div>
+                  <div className="dash-rule" />
+                  <div className="space-y-3">
+                    {Object.entries(statsModal.data.by_source).map(([source, count]) => {
+                      const total = statsModal.data!.total_clicks;
+                      const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                      const color = platformColors[source] || "bg-[#8B5CF6]";
+                      return (
+                        <div key={source} className="space-y-1">
+                          <div className="flex justify-between text-xs font-mono">
+                            <span className="capitalize">{source}</span>
+                            <span className="text-muted">{count} ({pct}%)</span>
+                          </div>
+                          <div className="w-full h-2 bg-paper-dim rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${color} transition-all`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted text-center py-8 font-mono">Failed to load stats.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

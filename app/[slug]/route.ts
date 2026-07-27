@@ -1,13 +1,21 @@
 const API_BASE = "https://api.motionukict.com/api/v1/link-shorterner";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
 
   try {
-    const response = await fetch(`${API_BASE}/r/${slug}`);
+    const url = new URL(request.url);
+    const referrer = request.headers.get("referer") || "";
+    const utmSource = url.searchParams.get("utm_source") || "";
+
+    const apiUrl = new URL(`${API_BASE}/r/${slug}`);
+    if (referrer) apiUrl.searchParams.set("referrer", referrer);
+    if (utmSource) apiUrl.searchParams.set("utm_source", utmSource);
+
+    const response = await fetch(apiUrl.toString());
 
     if (!response.ok) {
       return Response.json({ error: "Link not found on backend" }, { status: response.status });

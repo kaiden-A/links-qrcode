@@ -89,8 +89,15 @@ export default function HomePage() {
 
   // ─── Dashboard actions ───
   const handleTestHit = async (link: LinkRecord) => {
+    const params = new URLSearchParams();
+    const referrer = document.referrer || "";
+    if (referrer) params.set("referrer", referrer);
+    const utmSource = new URL(window.location.href).searchParams.get("utm_source") || "";
+    if (utmSource) params.set("utm_source", utmSource);
+    const qs = params.toString();
+
     await fetch(
-      `${window.location.protocol}//${window.location.host}/api/r/${link.slug}`,
+      `${window.location.protocol}//${window.location.host}/api/r/${link.slug}${qs ? `?${qs}` : ""}`,
       { redirect: "manual" }
     );
     // Refresh
