@@ -18,6 +18,7 @@ export default function HomePage() {
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
+  const [copiedSource, setCopiedSource] = useState<string | null>(null);
 
   // ─── Data ───
   const fetchedRef = useRef(false);
@@ -118,6 +119,50 @@ export default function HomePage() {
   const shortUrl = selectedLink
     ? `${window.location.protocol}//${window.location.host}/${selectedLink.slug}`
     : null;
+
+  // ─── Share tracking ───
+  const shareTargets = [
+    { id: "whatsapp", label: "WhatsApp" },
+    { id: "telegram", label: "Telegram" },
+    { id: "instagram", label: "Instagram" },
+    { id: "twitter", label: "Twitter / X" },
+    { id: "facebook", label: "Facebook" },
+    { id: "linkedin", label: "LinkedIn" },
+  ];
+
+  const platformDotColors: Record<string, string> = {
+    whatsapp: "bg-[#25D366]",
+    telegram: "bg-[#0088cc]",
+    instagram: "bg-[#E4405F]",
+    twitter: "bg-[#1DA1F2]",
+    facebook: "bg-[#1877F2]",
+    linkedin: "bg-[#0A66C2]",
+  };
+
+  const getShareUrl = (source: string) => {
+    if (!shortUrl) return "";
+    if (source === "general") return shortUrl;
+    return `${shortUrl}?utm_source=${source}`;
+  };
+
+  const handleCopyShare = (source: string) => {
+    const url = getShareUrl(source);
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedSource(source);
+      setTimeout(() => setCopiedSource(null), 1500);
+    });
+  };
+
+  const handleCopyAll = () => {
+    const lines = [
+      ...shareTargets.map((t) => `${t.label}: ${getShareUrl(t.id)}`),
+      `General: ${shortUrl}`,
+    ];
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      setCopiedSource("all");
+      setTimeout(() => setCopiedSource(null), 2000);
+    });
+  };
 
   // ─── Auth ───
   const handleAuthSubmit = (e: React.FormEvent) => {
@@ -553,8 +598,72 @@ export default function HomePage() {
 
                     <div className="perforation perforation-ink" />
 
-                    <div className="bg-ink text-paper p-6 flex-grow flex flex-col items-center justify-center gap-4">
+                    <div className="bg-ink text-paper p-6 flex flex-col items-center justify-center gap-4 min-h-[180px]">
                       <QRCodeCard url={shortUrl!} />
+                    </div>
+
+                    {/* ─── Share with tracking ─── */}
+                    <div className="p-5 space-y-4">
+                      <div className="dash-rule" />
+                      <div className="space-y-1.5">
+                        <h3 className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted font-semibold">
+                          Share with tracking
+                        </h3>
+                        <p className="text-[11px] text-muted leading-relaxed">
+                          Pick where you&apos;re sharing this link &mdash; each link gets a
+                          <code className="font-mono text-route-dark"> utm_source </code>
+                          tag so you can see exactly where clicks come from in analytics.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {shareTargets.map((t) => {
+                          const justCopied = copiedSource === t.id;
+                          return (
+                            <button
+                              key={t.id}
+                              onClick={() => handleCopyShare(t.id)}
+                              className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs font-mono transition-all text-left ${
+                                justCopied
+                                  ? "border-signal bg-signal/5 text-signal"
+                                  : "border-line-paper bg-white hover:border-route hover:text-route-dark"
+                              }`}
+                            >
+                              <span className={`w-2 h-2 rounded-full shrink-0 ${platformDotColors[t.id] || "bg-muted"}`} />
+                              <span>{t.label}</span>
+                              {justCopied && (
+                                <span className="ml-auto text-[10px] tracking-wider uppercase">Copied</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap pt-1">
+                        <button
+                          onClick={() => handleCopyShare("general")}
+                          className={`px-3 py-2 rounded-lg border text-xs font-mono transition-all ${
+                            copiedSource === "general"
+                              ? "border-signal bg-signal/5 text-signal"
+                              : "border-line-paper bg-white hover:border-route hover:text-route-dark"
+                          }`}
+                        >
+                          {copiedSource === "general" ? "Copied!" : "General link (no tag)"}
+                        </button>
+                        <button
+                          onClick={handleCopyAll}
+                          className={`px-3 py-2 rounded-lg text-xs font-mono transition-all flex items-center gap-1.5 ${
+                            copiedSource === "all"
+                              ? "bg-signal text-white"
+                              : "bg-ink text-paper hover:bg-ink-soft"
+                          }`}
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                          {copiedSource === "all" ? "Copied all!" : "Copy all"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
