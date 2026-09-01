@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { LiveDot } from "@/app/components/live-dot";
 import { QRCodeCard } from "@/app/components/qr-code";
 import { Dashboard } from "@/app/components/dashboard";
+import { useCurrentUser } from "@/lib/use-current-user";
 import type { LinkRecord } from "@/lib/types";
 
 export default function HomePage() {
@@ -12,12 +13,7 @@ export default function HomePage() {
   const [selectedLink, setSelectedLink] = useState<LinkRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"generator" | "analytics">("generator");
-  const [session, setSession] = useState<{ email: string } | null>(null);
-  const [showAuth, setShowAuth] = useState(false);
-  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [authError, setAuthError] = useState<string | null>(null);
+  const { user: session, loading: sessionLoading } = useCurrentUser();
   const [copiedSource, setCopiedSource] = useState<string | null>(null);
 
   // ─── Data ───
@@ -37,17 +33,13 @@ export default function HomePage() {
   }, []);
 
   // ─── Session ───
-  useEffect(() => {
-    const stored = localStorage.getItem("motionu_session");
-    if (stored) {
-      // Use microtask to avoid react-hooks/set-state-in-effect rule
-      queueMicrotask(() => {
-        try {
-          setSession(JSON.parse(stored));
-        } catch { /* ignore */ }
-      });
-    }
-  }, []);
+  const handleLogin = () => {
+    window.location.href = "/api/auth/login";
+  };
+
+  const handleLogout = () => {
+    window.location.href = "/api/auth/logout";
+  };
 
   // ─── Link creation ───
   const handleCreate = async (url: string, customSlug?: string) => {
@@ -110,9 +102,39 @@ export default function HomePage() {
   };
 
   const handleDelete = async (slug: string) => {
-    // Remove from UI — no DELETE endpoint on API yet
-    setLinks((prev) => prev.filter((l) => l.slug !== slug));
-    setSelectedLink((prev) => (prev?.slug === slug ? null : prev));
+    try {
+      const res = await fetch(`/api/links/${slug}`, { method: "DELETE" });
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+      if (!res.ok && res.status !== 404) return;
+      setLinks((prev) => prev.filter((l) => l.slug !== slug));
+      setSelectedLink((prev) => (prev?.slug === slug ? null : prev));
+    } catch { /* keep list as-is */ }
+  };
+
+  const handleUpdate = async (
+    slug: string,
+    update: { destination_url?: string; slug?: string }
+  ): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/links/${slug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(update),
+      });
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return false;
+      }
+      if (!res.ok) return false;
+      const listRes = await fetch("/api/links/");
+      if (listRes.ok) setLinks(await listRes.json());
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const totalClicks = links.reduce((sum, l) => sum + l.clicks, 0);
@@ -162,54 +184,6 @@ export default function HomePage() {
       setCopiedSource("all");
       setTimeout(() => setCopiedSource(null), 2000);
     });
-  };
-
-  // ─── Auth ───
-  const handleAuthSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const email = authEmail.trim().toLowerCase();
-    const password = authPassword;
-
-    if (authMode === "signup") {
-      const users = JSON.parse(localStorage.getItem("motionu_users") || "[]");
-      if (users.some((u: { email: string }) => u.email === email)) {
-        setAuthError("An account with that email already exists.");
-        return;
-      }
-      users.push({ email, password });
-      localStorage.setItem("motionu_users", JSON.stringify(users));
-    } else {
-      const users = JSON.parse(localStorage.getItem("motionu_users") || "[]");
-      const match = users.find(
-        (u: { email: string; password: string }) =>
-          u.email === email && u.password === password
-      );
-      if (!match) {
-        setAuthError("Email or password not recognized.");
-        return;
-      }
-    }
-
-    const sess = { email };
-    localStorage.setItem("motionu_session", JSON.stringify(sess));
-    setSession(sess);
-    setShowAuth(false);
-    setAuthEmail("");
-    setAuthPassword("");
-    setAuthError(null);
-    setActiveTab("analytics");
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("motionu_session");
-    setSession(null);
-    setActiveTab("generator");
-  };
-
-  const openAuth = (mode: "login" | "signup") => {
-    setAuthMode(mode);
-    setShowAuth(true);
-    setAuthError(null);
   };
 
   // ─── Nav classes ───
@@ -278,7 +252,7 @@ export default function HomePage() {
                   </div>
                 ) : (
                   <button
-                    onClick={() => openAuth("login")}
+                    onClick={handleLogin}
                     className="font-mono text-xs uppercase tracking-wider px-4 py-2 rounded-md bg-route hover:bg-route-dark"
                   >
                     Log in
@@ -675,7 +649,11 @@ export default function HomePage() {
         {/* ANALYTICS TAB */}
         {activeTab === "analytics" && (
           <section className="space-y-6">
-            {!session ? (
+            {sessionLoading ? (
+              <div className="max-w-md mx-auto text-center rounded-xl border border-line-paper bg-white/70 p-10">
+                <p className="font-mono text-xs text-muted">Checking access…</p>
+              </div>
+            ) : !session ? (
               <div className="max-w-md mx-auto text-center rounded-xl border border-line-paper bg-white/70 p-10">
                 <div className="w-12 h-12 rounded-full bg-paper-dim flex items-center justify-center mx-auto mb-4 text-muted">
                   <svg
@@ -696,118 +674,28 @@ export default function HomePage() {
                   Dashboard access required
                 </h3>
                 <p className="text-sm text-muted mb-6">
-                  Log in or create a free account to see route performance and
-                  click data.
+                  Log in with your workspace account to see route performance
+                  and click data.
                 </p>
-                <div className="flex items-center justify-center gap-3">
-                  <button
-                    onClick={() => openAuth("login")}
-                    className="board-btn px-5 py-2.5 rounded-lg bg-ink text-paper text-sm font-medium transition-colors"
-                  >
-                    Log in
-                  </button>
-                  <button
-                    onClick={() => openAuth("signup")}
-                    className="board-btn px-5 py-2.5 rounded-lg border border-ink text-sm font-medium transition-colors"
-                  >
-                    Sign up
-                  </button>
-                </div>
+                <button
+                  onClick={handleLogin}
+                  className="board-btn px-5 py-2.5 rounded-lg bg-ink text-paper text-sm font-medium transition-colors"
+                >
+                  Log in
+                </button>
               </div>
             ) : (
               <Dashboard
                 links={links}
                 onTestHit={handleTestHit}
                 onDelete={handleDelete}
+                onUpdate={handleUpdate}
                 totalClicks={totalClicks}
               />
             )}
           </section>
         )}
       </main>
-
-      {/* ─── AUTH MODAL ─── */}
-      {showAuth && (
-        <div
-          id="auth-modal"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
-          style={{ backdropFilter: "blur(2px)" }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowAuth(false);
-          }}
-        >
-          <div className="w-full max-w-sm rounded-xl border border-line-paper bg-white/70 overflow-hidden">
-            {/* Header */}
-            <div className="bg-ink text-paper px-6 py-4">
-              <h3 className="font-display font-semibold text-sm">
-                {authMode === "login" ? "Log in" : "Create account"}
-              </h3>
-            </div>
-            {/* Tabs */}
-            <div className="flex border-b border-line-paper">
-              <button
-                onClick={() => setAuthMode("login")}
-                className={`flex-1 py-3 font-mono text-xs uppercase tracking-wider transition-colors ${
-                  authMode === "login"
-                    ? "bg-white text-ink"
-                    : "text-muted"
-                }`}
-              >
-                Log in
-              </button>
-              <button
-                onClick={() => setAuthMode("signup")}
-                className={`flex-1 py-3 font-mono text-xs uppercase tracking-wider transition-colors ${
-                  authMode === "signup"
-                    ? "bg-white text-ink"
-                    : "text-muted"
-                }`}
-              >
-                Sign up
-              </button>
-            </div>
-            {/* Form */}
-            <form
-              onSubmit={handleAuthSubmit}
-              className="p-6 space-y-4"
-            >
-              <div>
-                <label className="block font-mono text-[10px] uppercase tracking-[0.2em] text-muted mb-1.5">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  className="w-full border border-line-paper rounded-lg bg-white px-3 py-2.5 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block font-mono text-[10px] uppercase tracking-[0.2em] text-muted mb-1.5">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  className="w-full border border-line-paper rounded-lg bg-white px-3 py-2.5 text-sm"
-                />
-              </div>
-              {authError && (
-                <p className="font-mono text-xs text-route-dark">{authError}</p>
-              )}
-              <button
-                type="submit"
-                className="w-full bg-route hover:bg-route-dark text-white font-medium py-2.5 rounded-lg text-sm transition-colors"
-              >
-                {authMode === "login" ? "Log in" : "Create account"}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* ─── FOOTER ─── */}
       <footer className="bg-ink text-paper mt-auto">

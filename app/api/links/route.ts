@@ -1,11 +1,15 @@
 import { NextRequest } from "next/server";
-
-const API_BASE = "https://api.motionukict.com/api/v1/link-shorterner";
+import { API_BASE, backendFetch, NotAuthenticatedError, unauthorizedResponse } from "@/lib/backend";
 
 export async function GET() {
-  const res = await fetch(`${API_BASE}/links/`);
-  const data = await res.json();
-  return Response.json(data, { status: res.status });
+  try {
+    const res = await backendFetch("/links/");
+    const data = await res.json();
+    return Response.json(data, { status: res.status });
+  } catch (e) {
+    if (e instanceof NotAuthenticatedError) return unauthorizedResponse();
+    throw e;
+  }
 }
 
 export async function POST(request: NextRequest) {

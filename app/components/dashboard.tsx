@@ -7,6 +7,7 @@ interface DashboardProps {
   links: LinkRecord[];
   onTestHit: (link: LinkRecord) => void;
   onDelete: (slug: string) => void;
+  onUpdate: (slug: string, update: { destination_url?: string; slug?: string }) => Promise<boolean>;
   totalClicks: number;
 }
 
@@ -14,6 +15,7 @@ export function Dashboard({
   links,
   onTestHit,
   onDelete,
+  onUpdate,
   totalClicks,
 }: DashboardProps) {
   const [statsModal, setStatsModal] = useState<{
@@ -21,6 +23,50 @@ export function Dashboard({
     data: LinkStats | null;
     loading: boolean;
   } | null>(null);
+  const [editModal, setEditModal] = useState<{
+    link: LinkRecord;
+    destinationUrl: string;
+    slug: string;
+    saving: boolean;
+    error: string | null;
+  } | null>(null);
+
+  const openEdit = (link: LinkRecord) => {
+    setEditModal({
+      link,
+      destinationUrl: link.destination_url,
+      slug: link.slug,
+      saving: false,
+      error: null,
+    });
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editModal) return;
+
+    setEditModal((m) => (m ? { ...m, saving: true, error: null } : m));
+
+    const update: { destination_url?: string; slug?: string } = {};
+    if (editModal.destinationUrl.trim() !== editModal.link.destination_url) {
+      update.destination_url = editModal.destinationUrl.trim();
+    }
+    if (editModal.slug.trim() !== editModal.link.slug) {
+      update.slug = editModal.slug.trim();
+    }
+
+    if (Object.keys(update).length === 0) {
+      setEditModal(null);
+      return;
+    }
+
+    const ok = await onUpdate(editModal.link.slug, update);
+    if (ok) {
+      setEditModal(null);
+    } else {
+      setEditModal((m) => (m ? { ...m, saving: false, error: "Could not update route. Slug may already be taken." } : m));
+    }
+  };
 
   const handleViewStats = async (slug: string) => {
     setStatsModal({ slug, data: null, loading: true });
@@ -156,6 +202,12 @@ export function Dashboard({
                       Stats
                     </button>
                     <button
+                      onClick={() => openEdit(link)}
+                      className="text-xs border border-line-paper hover:border-route hover:text-route-dark px-3 py-1.5 rounded-md transition-colors"
+                    >
+                      Edit
+                    </button>
+                    <button
                       onClick={() => onTestHit(link)}
                       className="text-xs border border-line-paper hover:border-route hover:text-route-dark px-3 py-1.5 rounded-md transition-colors"
                     >
@@ -241,6 +293,77 @@ export function Dashboard({
                 <p className="text-sm text-muted text-center py-8 font-mono">Failed to load stats.</p>
               )}
             </div>
+          </div>
+        </div>
+      )}
+      {/* Edit modal */}
+      {editModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+          style={{ backdropFilter: "blur(2px)" }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setEditModal(null);
+          }}
+        >
+          <div className="w-full max-w-md rounded-xl border border-line-paper bg-white overflow-hidden">
+            <div className="bg-ink text-paper px-6 py-4 flex items-center justify-between">
+              <h3 className="font-display font-semibold text-sm">
+                Edit route — /{editModal.link.slug}
+              </h3>
+              <button
+                onClick={() => setEditModal(null)}
+                className="text-muted hover:text-paper transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
+              <div>
+                <label className="block font-mono text-[10px] uppercase tracking-[0.2em] text-muted mb-1.5">
+                  Destination URL
+                </label>
+                <input
+                  type="url"
+                  required
+                  value={editModal.destinationUrl}
+                  onChange={(e) =>
+                    setEditModal((m) =>
+                      m ? { ...m, destinationUrl: e.target.value } : m
+                    )
+                  }
+                  className="w-full border border-line-paper rounded-lg bg-white px-3 py-2.5 text-sm focus:outline-none focus:border-route focus:ring-2 focus:ring-route/15"
+                />
+              </div>
+              <div>
+                <label className="block font-mono text-[10px] uppercase tracking-[0.2em] text-muted mb-1.5">
+                  Slug
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={20}
+                  value={editModal.slug}
+                  onChange={(e) =>
+                    setEditModal((m) =>
+                      m ? { ...m, slug: e.target.value } : m
+                    )
+                  }
+                  className="w-full border border-line-paper rounded-lg bg-white px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-route focus:ring-2 focus:ring-route/15"
+                />
+              </div>
+              {editModal.error && (
+                <p className="font-mono text-xs text-route-dark">{editModal.error}</p>
+              )}
+              <button
+                type="submit"
+                disabled={editModal.saving}
+                className="w-full bg-route hover:bg-route-dark disabled:opacity-50 text-white font-medium py-2.5 rounded-lg text-sm transition-colors"
+              >
+                {editModal.saving ? "Saving…" : "Save changes"}
+              </button>
+            </form>
           </div>
         </div>
       )}
