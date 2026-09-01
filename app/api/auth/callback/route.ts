@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
 
   const sessionToken = await createSessionToken(session);
 
-  const response = NextResponse.redirect(new URL("/", request.nextUrl));
+  const response = NextResponse.redirect(new URL("/dashboard", request.nextUrl));
 
   response.cookies.set(SESSION_COOKIE, sessionToken, {
     httpOnly: true,

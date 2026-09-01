@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import Link from "next/link";
 import { LiveDot } from "@/app/components/live-dot";
 import { QRCodeCard } from "@/app/components/qr-code";
 import { Dashboard } from "@/app/components/dashboard";
@@ -216,10 +217,9 @@ export default function HomePage() {
               >
                 Routes
               </button>
-              <button
-                disabled
-                className="font-mono text-xs uppercase tracking-wider px-4 py-2 rounded-md text-muted opacity-50 cursor-not-allowed flex items-center gap-2"
-                title="Coming soon"
+              <Link
+                href="/dashboard"
+                className="font-mono text-xs uppercase tracking-wider px-4 py-2 rounded-md text-muted hover:bg-ink-soft transition-colors flex items-center gap-2"
               >
                 <svg
                   className="w-3 h-3"
@@ -235,7 +235,7 @@ export default function HomePage() {
                   />
                 </svg>
                 Dashboard
-              </button>
+              </Link>
               <div className="w-px h-6 bg-line-dark mx-2" />
               <div>
                 {session ? (

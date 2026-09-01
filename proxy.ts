@@ -6,15 +6,20 @@ export async function proxy(request: NextRequest) {
   const session = await getSessionFromRequest(request);
 
   const { pathname } = request.nextUrl;
+  const isDashboardRoute = pathname.startsWith("/dashboard");
   const isLoginRoute = pathname === "/login";
 
+  if (isDashboardRoute && !session) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
   if (isLoginRoute && session) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/login"],
+  matcher: ["/dashboard/:path*", "/login"],
 };
